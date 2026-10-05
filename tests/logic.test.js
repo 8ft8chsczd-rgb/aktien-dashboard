@@ -176,6 +176,10 @@ test('bot data loads from the branch head and maps API errors to German messages
 
   globalThis.fetch = async () => new Response('', { status: 401 });
   await assert.rejects(loadBotData(cfg), /Token ist ungültig/);
+  // A private repo the token cannot see and a missing branch both come back as 404.
   globalThis.fetch = async () => new Response('', { status: 404 });
-  await assert.rejects(loadBotData(cfg), /nicht gefunden/);
+  await assert.rejects(loadBotData(cfg), /keinen Zugriff auf me\/Aktien/);
+  globalThis.fetch = async (url) =>
+    new URL(url).pathname === '/repos/me/Aktien' ? new Response('{}') : new Response('', { status: 404 });
+  await assert.rejects(loadBotData(cfg), /Branch „claude\/bot“ gibt es/);
 });

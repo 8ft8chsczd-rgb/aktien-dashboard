@@ -41,9 +41,32 @@ async function request(url, token, accept) {
   throw new GitHubError('http', `GitHub antwortet mit Fehler ${res.status}.`);
 }
 
+// GitHub answers 404 both for a missing branch and for a private repo the
+// token cannot see; asking for the repo itself tells the two apart.
+async function explainNotFound(repo, branch, token) {
+  try {
+    await request(`${API}/repos/${repo}`, token, 'application/vnd.github+json');
+  } catch (err) {
+    if (err.kind !== 'notfound') return err;
+    return new GitHubError(
+      'notfound',
+      token
+        ? `Das Token hat keinen Zugriff auf ${repo}. Beim Token muss unter „Repository access“ genau dieses Repo ausgewählt sein, mit „Contents: Read-only“.`
+        : `${repo} ist privat oder existiert nicht. Trag in den Einstellungen ein GitHub-Token ein.`,
+    );
+  }
+  return new GitHubError('notfound', `Den Branch „${branch}“ gibt es in ${repo} nicht. Prüfe den Branch in den Einstellungen.`);
+}
+
 export async function latestCommit({ repo, branch, githubToken }) {
   const url = `${API}/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`;
-  const res = await request(url, githubToken, 'application/vnd.github+json');
+  let res;
+  try {
+    res = await request(url, githubToken, 'application/vnd.github+json');
+  } catch (err) {
+    if (err.kind === 'notfound') throw await explainNotFound(repo, branch, githubToken);
+    throw err;
+  }
   const [commit] = await res.json();
   if (!commit) throw new GitHubError('notfound', 'Der Branch hat noch keine Commits.');
   return {
