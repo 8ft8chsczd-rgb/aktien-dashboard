@@ -1,0 +1,6 @@
+trade_id,symbol,direction,entry_date,entry_price,rsi_at_entry,macd_confirm,bbands_confirm,stochastic_confirm,volume_obv_confirm,atr_filter_confirm,trend_filter_confirm,score,size_eur,exit_date,exit_price,exit_reason,rsi_at_exit,pnl_pct,pnl_eur,status
+PFE_2026-09-17_LONG,PFE,LONG,2026-09-17,23.9,18.2,0.5,1.0,0.9,0.4,0.8,0.5,58.1,1000.0,2026-09-23,24.64,rsi_reverted,51.3,6.19,61.92,CLOSED
+TSLA_2026-09-24_SHORT,TSLA,SHORT,2026-09-24,410.0,84.6,0.1,0.8,0.7,0.2,0.1,0.0,40.8,1000.0,2026-09-28,442.8,stop_loss,79.2,-16.0,-160.0,CLOSED
+NVDA_2026-09-29_LONG,NVDA,LONG,2026-09-29,176.4,17.9,0.42,1.0,0.88,0.61,0.35,1.0,52.3,1000.0,,,,,,,OPEN
+XOM_2026-09-30_SHORT,XOM,SHORT,2026-09-30,121.8,83.2,0.2,0.9,0.75,0.3,0.71,0.5,47.1,1000.0,,,,,,,OPEN
+CTVA_2026-10-01_LONG,CTVA,LONG,2026-10-01,12.48,6.4,0.05,1.0,0.71,0.4,0.1,0.5,43.1,1000.0,,,,,,,OPEN

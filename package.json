@@ -1,0 +1,10 @@
+{
+  "name": "aktien-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "Echtzeit-Depotansicht für den simulierten S&P-500-RSI-Bot",
+  "scripts": {
+    "test": "node --test",
+    "e2e": "node tests/e2e.mjs"
+  }
+}

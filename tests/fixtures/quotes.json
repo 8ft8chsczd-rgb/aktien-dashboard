@@ -1,0 +1,8 @@
+{
+  "NVDA": { "name": "NVIDIA Corp", "industry": "Semiconductors", "pc": 181.2, "o": 182.0, "c": 184.1 },
+  "XOM": { "name": "Exxon Mobil Corp", "industry": "Energy", "pc": 118.9, "o": 118.5, "c": 117.6 },
+  "CTVA": { "name": "Corteva Inc", "industry": "Chemicals", "pc": 11.92, "o": 11.95, "c": 12.05, "gap": { "date": "2026-10-01", "from": 77.65, "to": 12.56 } },
+  "INTC": { "name": "Intel Corp", "industry": "Semiconductors", "pc": 21.35, "o": 21.4, "c": 21.1 },
+  "PFE": { "name": "Pfizer Inc", "industry": "Pharmaceuticals", "pc": 25.1, "o": 25.0, "c": 25.3 },
+  "TSLA": { "name": "Tesla Inc", "industry": "Automobiles", "pc": 440.0, "o": 438.0, "c": 445.0 }
+}

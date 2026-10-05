@@ -1,0 +1,32 @@
+[
+  {
+    "symbol": "CTVA",
+    "direction": "LONG",
+    "score": 43.1,
+    "rsi": 6.4,
+    "close": 12.48,
+    "confirmations": {
+      "macd": 0.05,
+      "bbands": 1.0,
+      "stochastic": 0.71,
+      "volume_obv": 0.4,
+      "atr_filter": 0.1,
+      "trend_filter": 0.5
+    }
+  },
+  {
+    "symbol": "INTC",
+    "direction": "LONG",
+    "score": 44.02,
+    "rsi": 18.4,
+    "close": 21.35,
+    "confirmations": {
+      "macd": 0.3,
+      "bbands": 0.95,
+      "stochastic": 0.8,
+      "volume_obv": 0.2,
+      "atr_filter": 0.4,
+      "trend_filter": 0.0
+    }
+  }
+]
