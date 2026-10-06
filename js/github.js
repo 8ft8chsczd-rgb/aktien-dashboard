@@ -130,11 +130,12 @@ function toTrade(row) {
 export async function loadBotData(cfg, knownSha = null) {
   const commit = await latestCommit(cfg);
   if (knownSha && commit.sha === knownSha) return null;
-  const [portfolio, trades, weights, candidates, configPy] = await Promise.all([
+  const [portfolio, trades, weights, candidates, blocked, configPy] = await Promise.all([
     readFile(cfg, 'data/portfolio.json', commit.sha),
     readFile(cfg, 'data/trade_log.csv', commit.sha),
     readFile(cfg, 'data/weights.json', commit.sha),
     readFile(cfg, 'data/last_candidates.json', commit.sha),
+    readFile(cfg, 'data/last_blocked_signals.json', commit.sha),
     readFile(cfg, 'config.py', commit.sha),
   ]);
   if (!portfolio) {
@@ -146,6 +147,7 @@ export async function loadBotData(cfg, knownSha = null) {
     trades: trades ? parseCsv(trades).map(toTrade) : [],
     weights: weights ? parseJson(weights, 'weights.json') : null,
     candidates: candidates ? parseJson(candidates, 'last_candidates.json') : [],
+    blocked: blocked ? parseJson(blocked, 'last_blocked_signals.json') : [],
     rules: parseRules(configPy || ''),
     loadedAt: Date.now(),
   };

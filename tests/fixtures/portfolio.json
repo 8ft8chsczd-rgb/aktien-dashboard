@@ -19,8 +19,12 @@
         "trend_filter": 1.0
       },
       "size_eur": 1000.0,
-      "stop_loss_price": 162.288,
-      "days_held": 4
+      "stop_loss_price": 169.28,
+      "days_held": 4,
+      "initial_stop_price": 162.288,
+      "best_close": 184.0,
+      "last_close": 181.2,
+      "last_close_date": "2026-10-02"
     },
     {
       "trade_id": "XOM_2026-09-30_SHORT",
@@ -39,8 +43,12 @@
         "trend_filter": 0.5
       },
       "size_eur": 1000.0,
-      "stop_loss_price": 131.544,
-      "days_held": 3
+      "stop_loss_price": 126.36,
+      "days_held": 3,
+      "initial_stop_price": 131.544,
+      "best_close": 117.0,
+      "last_close": 118.9,
+      "last_close_date": "2026-10-02"
     },
     {
       "trade_id": "CTVA_2026-10-01_LONG",
@@ -60,7 +68,17 @@
       },
       "size_eur": 1000.0,
       "stop_loss_price": 11.4816,
-      "days_held": 2
+      "days_held": 2,
+      "initial_stop_price": 11.4816,
+      "best_close": 12.48,
+      "last_close": 11.92,
+      "last_close_date": "2026-10-02",
+      "corporate_action": {
+        "date": "2026-10-01",
+        "change_pct": -83.82,
+        "close_before": 77.65,
+        "close_after": 12.56
+      }
     }
   ],
   "closed_trades_count": 2,

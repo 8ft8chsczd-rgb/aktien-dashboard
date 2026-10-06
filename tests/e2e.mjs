@@ -126,7 +126,7 @@ async function mockApis(context, { github = 'ok', now = OPEN_TIME } = {}) {
       });
     }
     const file = decodeURIComponent(url.pathname.split('/contents/')[1] || '');
-    const local = { 'data/portfolio.json': 'portfolio.json', 'data/trade_log.csv': 'trade_log.csv', 'data/weights.json': 'weights.json', 'data/last_candidates.json': 'last_candidates.json', 'config.py': 'config.py' }[file];
+    const local = { 'data/portfolio.json': 'portfolio.json', 'data/trade_log.csv': 'trade_log.csv', 'data/weights.json': 'weights.json', 'data/last_candidates.json': 'last_candidates.json', 'data/last_blocked_signals.json': 'last_blocked_signals.json', 'config.py': 'config.py' }[file];
     if (!local || !fs.existsSync(path.join(FIXTURES, local))) return route.fulfill({ status: 404, body: '{}' });
     return route.fulfill({ body: fixture(local) });
   });

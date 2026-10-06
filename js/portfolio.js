@@ -14,6 +14,10 @@ export const DEFAULT_RULES = {
   startingCapital: 5000,
   minWeight: 5,
   maxWeight: 35,
+  // Absent in bot versions without these features.
+  trailingStopPct: null,
+  gapPct: null,
+  gapLookbackDays: null,
 };
 
 const CONFIG_NAMES = {
@@ -29,6 +33,9 @@ const CONFIG_NAMES = {
   startingCapital: 'STARTING_CAPITAL',
   minWeight: 'MIN_WEIGHT',
   maxWeight: 'MAX_WEIGHT',
+  trailingStopPct: 'TRAILING_STOP_PCT',
+  gapPct: 'CORPORATE_ACTION_GAP_PCT',
+  gapLookbackDays: 'CORPORATE_ACTION_LOOKBACK_DAYS',
 };
 
 // Reads plain `NAME = 1.5` assignments from the bot's config.py; anything
@@ -56,6 +63,23 @@ export const positionValue = (pos, price, leverage) => pos.size_eur + pnlEur(pos
 
 export function equity(cash, positions, priceOf, leverage) {
   return positions.reduce((sum, pos) => sum + positionValue(pos, priceOf(pos), leverage), cash);
+}
+
+// Where the bot's trailing stop will stand after today's close if the price
+// closes here: it follows the best close since entry and never moves back.
+export function projectedStop(pos, price, trailingPct) {
+  if (!trailingPct || price == null) return pos.stop_loss_price;
+  const trail = trailingPct / 100;
+  const best = pos.best_close ?? pos.entry_price;
+  if (pos.direction === 'SHORT') return Math.min(pos.stop_loss_price, Math.min(best, price) * (1 + trail));
+  return Math.max(pos.stop_loss_price, Math.max(best, price) * (1 - trail));
+}
+
+// True once the trailing stop has moved away from its starting level.
+export function stopHasTrailed(pos) {
+  const initial = pos.initial_stop_price;
+  if (initial == null) return false;
+  return pos.direction === 'SHORT' ? pos.stop_loss_price < initial - 1e-9 : pos.stop_loss_price > initial + 1e-9;
 }
 
 // How far the price can still move against the position before the stop

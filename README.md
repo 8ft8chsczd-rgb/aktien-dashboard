@@ -73,7 +73,14 @@ RSI-Ausstieg und Haltedauer einmal täglich mit dem Schlusskurs.
 
 Bei einem Kurssprung von mehr als 35 % an einem Tag zeigt die App eine
 Warnung. Das deutet auf eine Kapitalmaßnahme wie eine Abspaltung oder einen
-Aktiensplit hin, und das RSI-Signal ist dann nicht aussagekräftig.
+Aktiensplit hin, und das RSI-Signal ist dann nicht aussagekräftig. Markiert
+der Bot selbst eine Position so, steht das dabei. Signale, die sein
+Kapitalmaßnahmen-Filter aussortiert hat, stehen unter *Signale*.
+
+Hat der Bot einen Trailing Stop (`TRAILING_STOP_PCT` in seiner `config.py`),
+zeigt die Detailseite den aktuellen, schon nachgezogenen Stop samt Startwert.
+Während der Börse steht dort außerdem, wohin der Bot den Stop nach Börsenschluss
+zieht, wenn der Kurs so schließt.
 
 ## Entwicklung
 

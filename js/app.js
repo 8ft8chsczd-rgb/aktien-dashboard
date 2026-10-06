@@ -1,7 +1,14 @@
 import * as store from './store.js';
 import * as fmt from './format.js';
 import { marketStatus, nyTime } from './market.js';
-import { positionValue, stopDistancePct, dedupeHistory, findPriceGap } from './portfolio.js';
+import {
+  positionValue,
+  stopDistancePct,
+  dedupeHistory,
+  findPriceGap,
+  projectedStop,
+  stopHasTrailed,
+} from './portfolio.js';
 import { loadBotData } from './github.js';
 import { fetchQuote, fetchProfile, TradeStream } from './live.js';
 import { loadSeries, cachedSeries, pruneSeriesCache } from './history.js';
@@ -43,8 +50,10 @@ const INDICATORS = [
 
 const EXIT_REASONS = {
   stop_loss: 'Stop-Loss',
+  trailing_stop: 'Trailing Stop',
   rsi_reverted: 'RSI bei 50',
   max_holding_days: 'Zeitlimit',
+  corporate_action: 'Kapitalmaßnahme',
 };
 
 const ICONS = {
@@ -237,10 +246,11 @@ function detailSeries(symbol, range, q, position) {
   const session = state.market.session;
   const now = Date.now();
   const live = q?.price != null && state.market.state === 'open' ? [now, q.price] : null;
+  const stopName = stopLabel(state.bot.rules);
   const refLines = position
     ? [
         { value: position.entry_price, label: `Einstieg ${fmt.usd(position.entry_price)}`, tone: 'neutral' },
-        { value: position.stop_loss_price, label: `Stop-Loss ${fmt.usd(position.stop_loss_price)}`, tone: 'neg' },
+        { value: position.stop_loss_price, label: `${stopName} ${fmt.usd(position.stop_loss_price)}`, tone: 'neg' },
       ]
     : [];
   if (range === '1T') {
@@ -287,6 +297,20 @@ function priceGap(symbol) {
   if (!daily || daily.length < 2) return null;
   const gap = findPriceGap(daily.slice(-90));
   return gap && Date.now() - gap.t < 120 * DAY ? gap : null;
+}
+
+// A price jump the bot itself flagged on a position, else one found in the
+// cached daily prices.
+function gapInfo(symbol, pos = null) {
+  const flagged = pos?.corporate_action;
+  if (flagged?.date) {
+    return { t: nyTime(flagged.date, 16, 0), r: flagged.change_pct / 100, from: flagged.close_before, to: flagged.close_after, flagged: true };
+  }
+  return priceGap(symbol);
+}
+
+function stopLabel(rules) {
+  return rules.trailingStopPct ? 'Trailing Stop' : 'Stop-Loss';
 }
 
 // --- Names and logos -------------------------------------------------------
@@ -421,10 +445,16 @@ function detailValues(model, detail, held, v) {
     v['d-pos-day'] = held.dayPnl != null ? withTone(fmt.change(held.dayPnl, held.dayPct)) : { text: '–', tone: 'flat' };
     if (held.stopDist != null) {
       const through = held.stopDist <= 0;
-      v['d-stop-dist'] = { text: through ? 'unterschritten' : `noch ${fmt.num(held.stopDist, 1)} % Abstand`, tone: through ? 'down' : 'flat' };
-      v['d-stop-rule'] = through
-        ? { text: 'Kurs liegt drunter. Der Bot verkauft beim nächsten Lauf, falls das zum Schluss so bleibt.', tone: 'down' }
-        : { text: `noch ${fmt.num(held.stopDist, 1)} % Abstand zum aktuellen Kurs`, tone: 'flat' };
+      const nb = '\u00a0';
+      v['d-stop-dist'] = { text: through ? 'unterschritten' : `noch ${fmt.num(held.stopDist, 1)}${nb}% Abstand`, tone: through ? 'down' : 'flat' };
+      // The bot moves its trailing stop at the close; show where it would land at today's price.
+      const next = projectedStop(held.pos, held.price, model.rules.trailingStopPct);
+      const moves = Math.abs(next - held.pos.stop_loss_price) >= 0.005;
+      let text = through
+        ? 'Der Kurs liegt drunter. Der Bot verkauft beim nächsten Lauf, wenn das zum Schluss so bleibt.'
+        : `noch ${fmt.num(held.stopDist, 1)}${nb}% Abstand zum aktuellen Kurs.`;
+      if (!through && moves) text += ` Schließt der Kurs so, zieht der Stop auf ${fmt.usd(next)} nach.`;
+      v['d-stop-rule'] = { text, tone: through ? 'down' : 'flat' };
     } else {
       v['d-stop-dist'] = { text: '', tone: 'flat' };
       v['d-stop-rule'] = { text: 'Abstand erscheint mit Live-Kursen', tone: 'flat' };
@@ -562,12 +592,13 @@ function homeNotices(model) {
     out.push(notice(esc(state.quoteError), { tone: 'error' }));
   }
   if (state.stream.error) out.push(notice(`Live-Verbindung: ${esc(state.stream.error)}`, { tone: 'warn' }));
-  const gaps = model.positions.map((p) => [p.pos.symbol, priceGap(p.pos.symbol)]).filter(([, g]) => g);
+  const gaps = model.positions.map((p) => [p.pos.symbol, gapInfo(p.pos.symbol, p.pos)]).filter(([, g]) => g);
   for (const [symbol, gap] of gaps) {
     out.push(
       notice(
         `<b>${esc(displayName(symbol))}:</b> Kurssprung um ${fmt.signedPct(gap.r * 100, 1)} an einem Tag (${fmt.dateOnly(gap.t)}). ` +
-          'Das sieht nach einer Kapitalmaßnahme aus, zum Beispiel einer Abspaltung. Das RSI-Signal ist dann nicht aussagekräftig.',
+          'Das sieht nach einer Kapitalmaßnahme aus, zum Beispiel einer Abspaltung. Das RSI-Signal ist dann nicht aussagekräftig.' +
+          (gap.flagged ? ' Der Bot hat die Position markiert, ihr Ergebnis fließt nicht ins Lernen ein.' : ''),
         { tone: 'warn', action: `<a class="notice-link" href="#/aktie/${encodeURIComponent(symbol)}">Details</a>` },
       ),
     );
@@ -617,10 +648,12 @@ function signalsSection(model) {
   const held = new Set(model.positions.map((p) => p.pos.symbol));
   const lastRun = model.history.length ? model.history[model.history.length - 1].date : null;
   const sub = lastRun ? `<p class="section-sub">Aus dem Bot-Lauf vom ${fmt.dayLong(lastRun)}</p>` : '';
+  const blocked = blockedRows();
   if (!candidates.length) {
     return `<section class="section" aria-labelledby="h-signals">
       <div class="section-head"><h2 id="h-signals">Signale</h2></div>${sub}
       <p class="empty">Keine Aktie hat beim letzten Lauf die Mindestpunktzahl von ${fmt.num(model.rules.minScore, 0)} erreicht.</p>
+      ${blocked}
     </section>`;
   }
   const rows = candidates
@@ -643,7 +676,30 @@ function signalsSection(model) {
   return `<section class="section" aria-labelledby="h-signals">
     <div class="section-head"><h2 id="h-signals">Signale</h2></div>${sub}
     <ul class="rows">${rows}</ul>
+    ${blocked}
   </section>`;
+}
+
+// Signals the bot's corporate-action filter dropped in its last run.
+function blockedRows() {
+  const blocked = state.bot.blocked || [];
+  if (!blocked.length) return '';
+  const rows = blocked
+    .map((b) => {
+      const s = b.symbol;
+      const dir = b.direction === 'SHORT' ? 'Short' : 'Long';
+      const jump = b.change_pct != null ? `Sprung ${fmt.signedPct(b.change_pct, 1)}${b.date ? ` am ${fmt.dayCompact(b.date)}` : ''}` : 'Kurssprung';
+      return `<li><a class="row" href="#/aktie/${encodeURIComponent(s)}">
+        ${logo(s)}
+        <span class="row-main">
+          <span class="row-title row-title-tagged"><span class="row-name">${esc(displayName(s))}</span><span class="tag">gefiltert</span></span>
+          <span class="row-sub">${dir} · ${jump}</span>
+        </span>
+        <span class="row-side"><span class="row-value">${b.close != null ? fmt.usd(b.close) : '–'}</span></span>
+      </a></li>`;
+    })
+    .join('');
+  return `<h3 class="sub-head">Vom Kapitalmaßnahmen-Filter aussortiert</h3><ul class="rows">${rows}</ul>`;
 }
 
 function activityItems(trades) {
@@ -723,10 +779,13 @@ function botSection(model) {
     `RSI unter ${fmt.num(rules.rsiOversold, 0)} → Long`,
     `RSI über ${fmt.num(rules.rsiOverbought, 0)} → Short`,
     `Kauf ab ${fmt.num(rules.minScore, 0)} Punkten`,
-    `Stop-Loss ${fmt.num(rules.stopLossPct, 0)} %`,
+    rules.trailingStopPct
+      ? `Trailing Stop ${fmt.num(rules.trailingStopPct, 0)} %`
+      : `Stop-Loss ${fmt.num(rules.stopLossPct, 0)} %`,
     `Ausstieg bei RSI ${fmt.num(rules.rsiExit, 0)}`,
     `max. ${fmt.num(rules.maxHoldingDays, 0)} Tage`,
     `Hebel ${fmt.num(rules.leverage, 0)}×`,
+    ...(rules.gapPct ? [`Filter: Sprünge ab ${fmt.num(rules.gapPct, 0)} %`] : []),
   ]
     .map((c) => `<li>${c}</li>`)
     .join('');
@@ -779,7 +838,9 @@ function positionCard(p, rules) {
       <div><dt>Einsatz</dt><dd>${fmt.eur(pos.size_eur)}</dd></div>
       <div><dt>Heute</dt><dd data-live="d-pos-day"></dd></div>
       <div><dt>Einstieg</dt><dd>${fmt.usd(pos.entry_price)}<span class="dd-sub">${fmt.dayLong(pos.entry_date)}</span></dd></div>
-      <div><dt>Stop-Loss</dt><dd>${fmt.usd(pos.stop_loss_price)}<span class="dd-sub" data-live="d-stop-dist"></span></dd></div>
+      <div><dt>${stopLabel(rules)}</dt><dd>${fmt.usd(pos.stop_loss_price)}${
+        stopHasTrailed(pos) ? `<span class="dd-sub">nachgezogen, Start ${fmt.usd(pos.initial_stop_price)}</span>` : ''
+      }<span class="dd-sub" data-live="d-stop-dist"></span></dd></div>
       <div class="facts-wide"><dt>Richtung</dt><dd>${direction} · Hebel ${fmt.num(rules.leverage, 0)}×</dd></div>
     </dl>
     <div class="progress-head"><span>Haltedauer</span><span>Tag ${pos.days_held} von ${rules.maxHoldingDays}</span></div>
@@ -809,7 +870,11 @@ function exitCard(p, rules) {
   return `<section class="section" aria-labelledby="h-exit">
     <div class="section-head"><h2 id="h-exit">Wann der Bot verkauft</h2></div>
     <ul class="rules">
-      <li><span class="rule-name">Stop-Loss bei ${fmt.usd(pos.stop_loss_price)}</span><span class="rule-state" data-live="d-stop-rule"></span></li>
+      <li><span class="rule-name">${stopLabel(rules)} bei ${fmt.usd(pos.stop_loss_price)}</span><span class="rule-state" data-live="d-stop-rule"></span>${
+        rules.trailingStopPct
+          ? `<span class="rule-state" data-tone="flat">Er folgt dem besten Schlusskurs seit Kauf mit ${fmt.num(rules.trailingStopPct, 0)} % Abstand und geht nie zurück.</span>`
+          : ''
+      }</li>
       <li><span class="rule-name">RSI zurück auf ${fmt.num(rules.rsiExit, 0)}</span><span class="rule-state" data-tone="flat">Bei Einstieg lag er bei ${fmt.num(pos.rsi_at_entry, 1)}.</span></li>
       <li><span class="rule-name">Spätestens nach ${fmt.num(rules.maxHoldingDays, 0)} Handelstagen</span><span class="rule-state" data-tone="flat">${left ? `noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : 'beim nächsten Lauf'}</span></li>
     </ul>
@@ -825,15 +890,16 @@ function tradesCard(trades) {
   </section>`;
 }
 
-function detailNotices(symbol) {
+function detailNotices(symbol, pos) {
   const out = [];
-  const gap = priceGap(symbol);
+  const gap = gapInfo(symbol, pos);
   if (gap) {
     out.push(
       notice(
         `<b>Kurssprung am ${fmt.dateOnly(gap.t)}:</b> ${fmt.signedPct(gap.r * 100, 1)} an einem Tag, von ${fmt.usd(gap.from)} auf ${fmt.usd(gap.to)}. ` +
           'So ein Sprung entsteht meist durch eine Kapitalmaßnahme wie eine Abspaltung oder einen Aktiensplit, nicht durch echten Verkaufsdruck. ' +
-          'Der RSI liest ihn trotzdem als extremen Ausverkauf, das Signal ist dann nicht aussagekräftig.',
+          'Der RSI liest ihn trotzdem als extremen Ausverkauf, das Signal ist dann nicht aussagekräftig.' +
+          (gap.flagged ? ' Der Bot hat die Position deshalb markiert, ihr Ergebnis fließt nicht ins Lernen ein.' : ''),
         { tone: 'warn' },
       ),
     );
@@ -867,7 +933,7 @@ function viewDetail(model) {
     </section>
     <div class="chart" id="main-chart"></div>
     ${rangeTabs(state.ui.detailRange, 'detail-range')}
-    ${detailNotices(symbol)}
+    ${detailNotices(symbol, held?.pos)}
     ${held ? positionCard(held, model.rules) : ''}
     ${held || cand ? reasonCard(held ? held.pos : cand, Boolean(held), model.rules) : ''}
     ${held ? exitCard(held, model.rules) : ''}
@@ -1031,6 +1097,7 @@ async function refreshProfiles() {
   const now = Date.now();
   const wanted = new Set(trackedSymbols());
   for (const t of (state.bot.trades || []).slice(-20)) wanted.add(t.symbol);
+  for (const b of state.bot.blocked || []) wanted.add(b.symbol);
   const missing = [...wanted].filter((s) => !state.profiles[s] || now - (state.profiles[s].at || 0) > 7 * DAY).slice(0, 20);
   if (!missing.length) return;
   const results = await Promise.allSettled(missing.map((s) => fetchProfile(s, key)));

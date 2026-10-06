@@ -1,0 +1,13 @@
+[
+  {
+    "symbol": "SOLV",
+    "direction": "LONG",
+    "rsi": 9.1,
+    "close": 48.2,
+    "reason": "corporate_action",
+    "date": "2026-09-29",
+    "change_pct": -41.2,
+    "close_before": 82.0,
+    "close_after": 48.2
+  }
+]

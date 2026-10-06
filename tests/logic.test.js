@@ -9,6 +9,8 @@ import {
   stopDistancePct,
   dedupeHistory,
   findPriceGap,
+  projectedStop,
+  stopHasTrailed,
   DEFAULT_RULES,
 } from '../js/portfolio.js';
 import { marketStatus, nyTime, isTradingDay, previousTradingDay } from '../js/market.js';
@@ -66,6 +68,20 @@ test('rules are read from config.py with defaults for the rest', () => {
   assert.equal(rules.minScore, 40);
   assert.equal(rules.maxHoldingDays, 15);
   assert.equal(rules.stopLossPct, DEFAULT_RULES.stopLossPct);
+  assert.equal(rules.trailingStopPct, null, 'older bot versions have no trailing stop');
+  assert.equal(parseRules('TRAILING_STOP_PCT = 8.0\nCORPORATE_ACTION_GAP_PCT = 30.0\n').trailingStopPct, 8);
+});
+
+test('trailing stop projection follows the bot: up for longs, down for shorts, never back', () => {
+  const pos = { ...long, best_close: 22, stop_loss_price: 20.24, initial_stop_price: 18.4 };
+  assert.ok(Math.abs(projectedStop(pos, 25, 8) - 23) < 1e-9);
+  assert.ok(Math.abs(projectedStop(pos, 21, 8) - 20.24) < 1e-9, 'a lower price keeps the stop');
+  assert.equal(projectedStop(pos, 25, null), 20.24, 'without a trailing stop nothing moves');
+  assert.equal(stopHasTrailed(pos), true);
+  assert.equal(stopHasTrailed({ ...long, initial_stop_price: 18.4 }), false);
+  const short = { ...long, direction: 'SHORT', entry_price: 100, stop_loss_price: 108, initial_stop_price: 108 };
+  assert.ok(Math.abs(projectedStop(short, 90, 8) - 97.2) < 1e-9);
+  assert.equal(projectedStop(short, 105, 8), 108);
 });
 
 test('a one-day jump of 84 % is flagged as a likely corporate action', () => {
